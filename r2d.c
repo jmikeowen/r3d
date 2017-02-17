@@ -37,16 +37,6 @@
 	v.y /= (tmplen + 1.0e-299);		\
 }
 
-#define max(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _a : _b; })
-
-#define min(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a < _b ? _a : _b; })
-
 
 void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 
@@ -381,7 +371,7 @@ void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts) {
 }
 
 
-void r2d_destroy_poly(r2d_poly* poly) {
+void r2d_free_poly(r2d_poly* poly) {
 	if (poly->verts != NULL) {
 		free(poly->verts);
 	}

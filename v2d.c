@@ -46,6 +46,8 @@
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #define wav(va, wa, vb, wb, vr) {			\
 	vr.x = (wa*va.x + wb*vb.x)/(wa + wb);	\
@@ -71,15 +73,17 @@ void r2d_rasterize(r2d_poly* poly, r2d_dvec2 ibox[2], r2d_real* dest_grid, r2d_r
 	// explicit stack-based implementation
 	// stack size should never overflow in this implementation, 
 	// even for large input grids (up to ~512^2) 
+        m = (r2d_int)(ceil(log2(gridsz.i))+ceil(log2(gridsz.j))+1);
 	struct {
 		r2d_poly poly;
 		r2d_dvec2 ibox[2];
-	} stack[(r2d_int)(ceil(log2(gridsz.i))+ceil(log2(gridsz.j))+1)];
+	} stack[m];
+        for (i = 0; i < m; ++i) stack[i].poly = r2d_init_empty_poly();
 
 	// push the original polyhedron onto the stack
 	// and recurse until child polyhedra occupy single rasters
 	nstack = 0;
-	stack[nstack].poly = *poly;
+	r2d_copy_poly(&stack[nstack].poly, poly);
 	memcpy(stack[nstack].ibox, ibox, 2*sizeof(r2d_dvec2));
 	nstack++;
 	while(nstack > 0) {
@@ -126,18 +130,27 @@ void r2d_split(r2d_poly* inpoly, r2d_poly** outpolys, r2d_real coord, r2d_int ax
 	// direct access to vertex buffer
 	if(inpoly->nverts <= 0) return;
 	r2d_int* nverts = &inpoly->nverts;
-	r2d_vertex* vertbuffer = inpoly->verts; 
 	r2d_int v, np, onv, vcur, vnext, vstart, nright, cside;
 	r2d_rvec2 newpos;
-	r2d_int side[*nverts];
-	r2d_real sdists[*nverts];
+	r2d_int* side = malloc((*nverts)*sizeof(r2d_int));
+	r2d_real sdists[(*nverts)];
+	r2d_vertex* verts_new;
+	r2d_int* side_new;
+
+	printf("Starting:--------------------------------------------------------------------------------\n");
+	printf("inpoly %d\n", inpoly->nverts);
+	r2d_print(inpoly);
+	printf("outpolys[0] %d\n", outpolys[0]->nverts);
+	r2d_print(outpolys[0]);
+	printf("outpolys[1] %d\n", outpolys[1]->nverts);
+	r2d_print(outpolys[1]);
 
 	// calculate signed distances to the clip plane
 	nright = 0;
-	memset(&side, 0, sizeof(side));
+	for (v = 0; v < *nverts; ++v) side[v] = 0;
 	for(v = 0; v < *nverts; ++v) {
-			//sdists[v] = splane.d + r2d_dot(vertbuffer[v].pos, splane.n);
-		sdists[v] = coord - vertbuffer[v].pos.xy[ax];
+			//sdists[v] = splane.d + r2d_dot(inpoly->verts[v].pos, splane.n);
+		sdists[v] = coord - inpoly->verts[v].pos.xy[ax];
 		sdists[v] *= -1;
 		if(sdists[v] < 0.0) {
 			side[v] = 1;
@@ -147,12 +160,12 @@ void r2d_split(r2d_poly* inpoly, r2d_poly** outpolys, r2d_real coord, r2d_int ax
 
 	// return if the poly lies entirely on one side of it 
 	if(nright == 0) {
-		*(outpolys[0]) = *inpoly;
+                r2d_copy_poly(outpolys[0], inpoly);
 		outpolys[1]->nverts = 0;
 		return;
 	}
 	if(nright == *nverts) {
-		*(outpolys[1]) = *inpoly;
+                r2d_copy_poly(outpolys[1], inpoly);
 		outpolys[0]->nverts = 0;
 		return;
 	}
@@ -162,45 +175,69 @@ void r2d_split(r2d_poly* inpoly, r2d_poly** outpolys, r2d_real coord, r2d_int ax
 	for(vcur = 0; vcur < onv; ++vcur) {
 		if(side[vcur]) continue;
 		for(np = 0; np < 2; ++np) {
-			vnext = vertbuffer[vcur].pnbrs[np];
+			vnext = inpoly->verts[vcur].pnbrs[np];
 			if(!side[vnext]) continue;
-			wav(vertbuffer[vcur].pos, -sdists[vnext],
-				vertbuffer[vnext].pos, sdists[vcur],
+			wav(inpoly->verts[vcur].pos, -sdists[vnext],
+				inpoly->verts[vnext].pos, sdists[vcur],
 				newpos);
-			vertbuffer[*nverts].pos = newpos;
-			vertbuffer[vcur].pnbrs[np] = *nverts;
-			vertbuffer[*nverts].pnbrs[np] = -1;
-			vertbuffer[*nverts].pnbrs[1-np] = vcur;
+                        verts_new = realloc(inpoly->verts, (*nverts + 2)*sizeof(r2d_vertex));
+			side_new = realloc(side, (*nverts + 2)*sizeof(r2d_int));
+			if (verts_new == NULL || side_new == NULL) {
+                          printf("r2d_split ERROR: unable to increase vertex buffer size.\n");
+                          abort();
+                        }
+                        inpoly->verts = verts_new;
+			side = side_new;
+			side[*nverts] = 0;
+			inpoly->verts[*nverts].pos = newpos;
+			inpoly->verts[vcur].pnbrs[np] = *nverts;
+			inpoly->verts[*nverts].pnbrs[np] = -1;
+			inpoly->verts[*nverts].pnbrs[1-np] = vcur;
 			(*nverts)++;
 			side[*nverts] = 1;
-			vertbuffer[*nverts].pos = newpos;
-			vertbuffer[*nverts].pnbrs[1-np] = -1;
-			vertbuffer[*nverts].pnbrs[np] = vnext;
-			vertbuffer[vnext].pnbrs[1-np] = *nverts;
+			inpoly->verts[*nverts].pos = newpos;
+			inpoly->verts[*nverts].pnbrs[1-np] = -1;
+			inpoly->verts[*nverts].pnbrs[np] = vnext;
+			inpoly->verts[vnext].pnbrs[1-np] = *nverts;
 			(*nverts)++;
 		}
 	}
+	printf("--------------------------------------------------------------------------------\n");
+	r2d_print(&inpoly);
+
+	abort();
 
 	// for each new vert, search around the poly for its new neighbors
 	// and doubly-link everything
 	for(vstart = onv; vstart < *nverts; ++vstart) {
-		if(vertbuffer[vstart].pnbrs[1] >= 0) continue;
-		vcur = vertbuffer[vstart].pnbrs[0];
+		if(inpoly->verts[vstart].pnbrs[1] >= 0) continue;
+		vcur = inpoly->verts[vstart].pnbrs[0];
 		do {
-			vcur = vertbuffer[vcur].pnbrs[0]; 
+			vcur = inpoly->verts[vcur].pnbrs[0]; 
 		} while(vcur < onv);
-		vertbuffer[vstart].pnbrs[1] = vcur;
-		vertbuffer[vcur].pnbrs[0] = vstart;
+		inpoly->verts[vstart].pnbrs[1] = vcur;
+		inpoly->verts[vcur].pnbrs[0] = vstart;
 	}
+	printf("--------------------------------------------------------------------------------\n");
+	r2d_print(&inpoly);
 
 	// copy and compress vertices into their new buffers
 	// reusing side[] for reindexing
 	onv = *nverts;
 	outpolys[0]->nverts = 0;
 	outpolys[1]->nverts = 0;
+	outpolys[0]->verts = (r2d_vertex*) malloc(onv*sizeof(r2d_vertex));
+	outpolys[1]->verts = (r2d_vertex*) malloc(onv*sizeof(r2d_vertex));
+	if (outpolys[0]->verts == NULL || outpolys[1]->verts == NULL) {
+		printf("r2d_split ERROR: unable to allocate outpoly vertex buffers.\n");
+		abort();
+	}
 	for(v = 0; v < onv; ++v) {
 		cside = side[v];
-		outpolys[cside]->verts[outpolys[cside]->nverts] = vertbuffer[v];
+		if (cside != 0 && cside != 1) {
+			printf("NOPE: %d %d\n", v, cside);
+		}
+		outpolys[cside]->verts[outpolys[cside]->nverts] = inpoly->verts[v];
 		side[v] = (outpolys[cside]->nverts)++;
 	}
 
@@ -210,6 +247,7 @@ void r2d_split(r2d_poly* inpoly, r2d_poly** outpolys, r2d_real coord, r2d_int ax
 	for(v = 0; v < outpolys[1]->nverts; ++v) 
 		for(np = 0; np < 2; ++np)
 			outpolys[1]->verts[v].pnbrs[np] = side[outpolys[1]->verts[v].pnbrs[np]];
+	free(side);
 }
 
 void r2d_get_ibox(r2d_poly* poly, r2d_dvec2 ibox[2], r2d_rvec2 d) {

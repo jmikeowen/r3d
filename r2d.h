@@ -272,7 +272,7 @@ void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts);
 /**
  * \brief Clean and deallocate any memory used by an r2d_poly.
  */
-void r2d_destroy_poly(r2d_poly* poly);
+void r2d_free_poly(r2d_poly* poly);
 
 /**
  * \brief Copy an r2d_poly to a new instance.  Does a deep copy of the vertex buffer.
