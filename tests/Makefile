@@ -15,7 +15,7 @@ R2D_SRC = r2d_unit_tests.c
 RND_SRC = rNd_unit_tests.c 
 
 CC = gcc
-CFLAGS = -Wall -I.
+CFLAGS = -Wall -I. -g
 R3D_SRC += $(UTEST_HOME)/utest.c test_helpers.c
 R2D_SRC += $(UTEST_HOME)/utest.c test_helpers.c
 RND_SRC += $(UTEST_HOME)/utest.c test_helpers.c

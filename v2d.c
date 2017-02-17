@@ -129,8 +129,8 @@ void r2d_split(r2d_poly* inpoly, r2d_poly** outpolys, r2d_real coord, r2d_int ax
 	r2d_vertex* vertbuffer = inpoly->verts; 
 	r2d_int v, np, onv, vcur, vnext, vstart, nright, cside;
 	r2d_rvec2 newpos;
-	r2d_int side[R2D_MAX_VERTS];
-	r2d_real sdists[R2D_MAX_VERTS];
+	r2d_int side[*nverts];
+	r2d_real sdists[*nverts];
 
 	// calculate signed distances to the clip plane
 	nright = 0;
