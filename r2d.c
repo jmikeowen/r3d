@@ -104,7 +104,7 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
                                 clipped_new = realloc(clipped, (*nverts + 1)*sizeof(r2d_int));
                                 if (verts_new == NULL || sdists_new == NULL || clipped_new == NULL) {
                                   printf("r2d_clip ERROR: unable to increase vertex buffer size.");
-                                  return;
+                                  abort();
                                 }
                                 poly->verts = verts_new;
                                 sdists = sdists_new;
@@ -326,10 +326,11 @@ void r2d_init_box(r2d_poly* poly, r2d_rvec2 rbounds[2]) {
 	// Allocate memory
 	r2d_int* nverts = &poly->nverts; 
 	*nverts = 4;
+        if (poly->verts != NULL) free(poly->verts);
 	poly->verts = malloc((*nverts)*sizeof(r2d_vertex));
 	if (poly->verts == NULL) {
 		printf("r2d_init_box ERROR: unable to allocate verts>");
-		return;
+                abort();
 	}
 
 	// direct access to vertex buffer
@@ -360,10 +361,11 @@ void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts) {
 	// Allocate memory
 	r2d_int* nverts = &poly->nverts; 
 	*nverts = numverts;
+        if (poly->verts != NULL) free(poly->verts);
 	poly->verts = malloc((*nverts)*sizeof(r2d_vertex));
 	if (poly->verts == NULL) {
 		printf("r2d_init_poly ERROR: unable to allocate verts>");
-		return;
+                abort();
 	}
 
 	// direct access to vertex buffer
@@ -391,9 +393,10 @@ void r2d_copy_poly(r2d_poly* topoly, r2d_poly* frompoly) {
 		free(topoly->verts);
 	}
 	topoly->verts = malloc((topoly->nverts)*sizeof(r2d_vertex));
-	/* if (topoly->verts == NULL) { */
-	/* 	printf("r2d_copy_poly ERROR: unable to allocate target vertex buffer."); */
-	/* } */
+	if (topoly->verts == NULL) {
+		printf("r2d_copy_poly ERROR: unable to allocate target vertex buffer.");
+                abort();
+	}
 	memcpy(topoly->verts, frompoly->verts, (topoly->nverts)*sizeof(r2d_vertex));
 }
 
