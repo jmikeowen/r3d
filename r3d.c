@@ -21,6 +21,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // useful macros
 #define ONE_THIRD 0.333333333333333333333333333333333333333333333333333333
@@ -40,21 +41,25 @@
 
 void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 
-	// direct access to vertex buffer
-	r3d_vertex* vertbuffer = poly->verts; 
-	r3d_int* nverts = &poly->nverts; 
-	if(*nverts <= 0) return;
-
 	// variable declarations
 	r3d_int v, p, np, onv, vcur, vnext, vstart, 
 			pnext, numunclipped;
 
+	// Number of starting points.
+	r3d_int* nverts = &poly->nverts; 
+	if(*nverts <= 0) return;
+
 	// signed distances to the clipping plane
-	r3d_real sdists[R3D_MAX_VERTS];
+	r3d_real* sdists = (r3d_real*) malloc((*nverts)*sizeof(r3d_real));
 	r3d_real smin, smax;
 
 	// for marking clipped vertices
-	r3d_int clipped[R3D_MAX_VERTS];
+	r3d_int* clipped = (r3d_int*) malloc((*nverts)*sizeof(r3d_int));
+
+        // Be prepared for reallocating with new pointers.
+	r3d_vertex* verts_new;
+        r3d_real* sdists_new;
+        r3d_int* clipped_new;
 
 	// loop over each clip plane
 	for(p = 0; p < nplanes; ++p) {
@@ -63,9 +68,9 @@ void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 		onv = *nverts;
 		smin = 1.0e30;
 		smax = -1.0e30;
-		memset(&clipped, 0, sizeof(clipped));
+		memset(clipped, 0, onv*sizeof(r3d_int));
 		for(v = 0; v < onv; ++v) {
-			sdists[v] = planes[p].d + dot(vertbuffer[v].pos, planes[p].n);
+			sdists[v] = planes[p].d + dot(poly->verts[v].pos, planes[p].n);
 			if(sdists[v] < smin) smin = sdists[v];
 			if(sdists[v] > smax) smax = sdists[v];
 			if(sdists[v] < 0.0) clipped[v] = 1;
@@ -75,6 +80,8 @@ void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 		if(smin >= 0.0) continue;
 		if(smax <= 0.0) {
 			*nverts = 0;
+			free(sdists);
+			free(clipped);
 			return;
 		}
 
@@ -82,13 +89,24 @@ void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 		for(vcur = 0; vcur < onv; ++vcur) {
 			if(clipped[vcur]) continue;
 			for(np = 0; np < 3; ++np) {
-				vnext = vertbuffer[vcur].pnbrs[np];
+				vnext = poly->verts[vcur].pnbrs[np];
 				if(!clipped[vnext]) continue;
-				vertbuffer[*nverts].pnbrs[0] = vcur;
-				vertbuffer[vcur].pnbrs[np] = *nverts;
-				wav(vertbuffer[vcur].pos, -sdists[vnext],
-					vertbuffer[vnext].pos, sdists[vcur],
-					vertbuffer[*nverts].pos);
+                                verts_new = realloc(poly->verts, (*nverts + 1)*sizeof(r3d_vertex));
+                                sdists_new = realloc(sdists, (*nverts + 1)*sizeof(r3d_real));
+                                clipped_new = realloc(clipped, (*nverts + 1)*sizeof(r3d_int));
+                                if (verts_new == NULL || sdists_new == NULL || clipped_new == NULL) {
+                                  printf("r3d_clip ERROR: unable to increase vertex buffer size.\n");
+                                  abort();
+                                }
+                                poly->verts = verts_new;
+                                sdists = sdists_new;
+                                clipped = clipped_new;
+				poly->verts[*nverts].pnbrs[0] = vcur;
+				poly->verts[vcur].pnbrs[np] = *nverts;
+                                clipped[*nverts] = 0;
+				wav(poly->verts[vcur].pos, -sdists[vnext],
+					poly->verts[vnext].pos, sdists[vcur],
+					poly->verts[*nverts].pos);
 				(*nverts)++;
 			}
 		}
@@ -97,15 +115,15 @@ void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 		// and doubly-link everything
 		for(vstart = onv; vstart < *nverts; ++vstart) {
 			vcur = vstart;
-			vnext = vertbuffer[vcur].pnbrs[0];
+			vnext = poly->verts[vcur].pnbrs[0];
 			do {
-				for(np = 0; np < 3; ++np) if(vertbuffer[vnext].pnbrs[np] == vcur) break;
+				for(np = 0; np < 3; ++np) if(poly->verts[vnext].pnbrs[np] == vcur) break;
 				vcur = vnext;
 				pnext = (np+1)%3;
-				vnext = vertbuffer[vcur].pnbrs[pnext];
+				vnext = poly->verts[vcur].pnbrs[pnext];
 			} while(vcur < onv);
-			vertbuffer[vstart].pnbrs[2] = vcur;
-			vertbuffer[vcur].pnbrs[1] = vstart;
+			poly->verts[vstart].pnbrs[2] = vcur;
+			poly->verts[vcur].pnbrs[1] = vstart;
 		}
 
 		// go through and compress the vertex list, removing clipped verts
@@ -113,15 +131,19 @@ void r3d_clip(r3d_poly* poly, r3d_plane* planes, r3d_int nplanes) {
 		numunclipped = 0;
 		for(v = 0; v < *nverts; ++v) {
 			if(!clipped[v]) {
-				vertbuffer[numunclipped] = vertbuffer[v];
+				poly->verts[numunclipped] = poly->verts[v];
 				clipped[v] = numunclipped++;
 			}
 		}
 		*nverts = numunclipped;
 		for(v = 0; v < *nverts; ++v) 
 			for(np = 0; np < 3; ++np)
-				vertbuffer[v].pnbrs[np] = clipped[vertbuffer[v].pnbrs[np]];
+				poly->verts[v].pnbrs[np] = clipped[poly->verts[v].pnbrs[np]];
 	}
+
+        // Clean up.
+        free(sdists);
+        free(clipped);
 }
 
 	
@@ -257,16 +279,16 @@ void r3d_reduce(r3d_poly* poly, r3d_real* moments, r3d_int polyorder) {
 
 r3d_int r3d_is_good(r3d_poly* poly) {
 
+	r3d_int* nverts = &poly->nverts; 
 	r3d_int v, np, rcur;
 	r3d_int nvstack;
 	r3d_int va, vb, vc;
-	r3d_int vct[R3D_MAX_VERTS];
-	r3d_int stack[R3D_MAX_VERTS];
-	r3d_int regions[R3D_MAX_VERTS];
+	r3d_int vct[*nverts];
+	r3d_int stack[*nverts];
+	r3d_int regions[*nverts];
 
 	// direct access to vertex buffer
 	r3d_vertex* vertbuffer = poly->verts; 
-	r3d_int* nverts = &poly->nverts; 
 
 	// consistency check
 	memset(&vct, 0, sizeof(vct));
@@ -422,14 +444,28 @@ void r3d_affine(r3d_poly* poly, r3d_real mat[4][4]) {
 }
 
 
+r3d_poly r3d_init_empty_poly() {
+	r3d_poly result = {NULL, 0};
+	return result;
+}
+
+
 void r3d_init_tet(r3d_poly* poly, r3d_rvec3 verts[4]) {
+
+	// Allocate memory
+	r3d_int* nverts = &poly->nverts; 
+	*nverts = 4;
+        if (poly->verts != NULL) free(poly->verts);
+	poly->verts = malloc((*nverts)*sizeof(r3d_vertex));
+	if (poly->verts == NULL) {
+		printf("r3d_init_tet ERROR: unable to allocate verts\n");
+                abort();
+	}
 
 	// direct access to vertex buffer
 	r3d_vertex* vertbuffer = poly->verts; 
-	r3d_int* nverts = &poly->nverts; 
 	
 	// initialize graph connectivity
-	*nverts = 4;
 	vertbuffer[0].pnbrs[0] = 1;	
 	vertbuffer[0].pnbrs[1] = 3;	
 	vertbuffer[0].pnbrs[2] = 2;	
@@ -452,11 +488,19 @@ void r3d_init_tet(r3d_poly* poly, r3d_rvec3 verts[4]) {
 
 void r3d_init_box(r3d_poly* poly, r3d_rvec3 rbounds[2]) {
 
+	// Allocate memory
+	r3d_int* nverts = &poly->nverts; 
+	*nverts = 8;
+        if (poly->verts != NULL) free(poly->verts);
+	poly->verts = malloc((*nverts)*sizeof(r3d_vertex));
+	if (poly->verts == NULL) {
+		printf("r3d_init_box ERROR: unable to allocate verts\n");
+                abort();
+	}
+
 	// direct access to vertex buffer
 	r3d_vertex* vertbuffer = poly->verts; 
-	r3d_int* nverts = &poly->nverts; 
 	
-	*nverts = 8;
 	vertbuffer[0].pnbrs[0] = 1;	
 	vertbuffer[0].pnbrs[1] = 4;	
 	vertbuffer[0].pnbrs[2] = 3;	
@@ -514,14 +558,15 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 	// dummy vars
 	r3d_int v, vprev, vcur, vnext, f, np;
 
-	// direct access to vertex buffer
-	r3d_vertex* vertbuffer = poly->verts; 
+	// We'll assume here we won't need more than ten times the input vertices.
+	// Big assumption that may fail!
 	r3d_int* nverts = &poly->nverts; 
+	r3d_int max_verts = 10*numverts;
 
 	// count up the number of faces per vertex
 	// and act accordingly
-	r3d_int eperv[R3D_MAX_VERTS];
-	r3d_int minvperf = R3D_MAX_VERTS;
+	r3d_int eperv[max_verts];
+	r3d_int minvperf = max_verts;
 	r3d_int maxvperf = 0;
 	memset(&eperv, 0, sizeof(eperv));
 	for(f = 0; f < numfaces; ++f)
@@ -533,7 +578,7 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 	}
 
 	// clear the poly
-	*nverts = 0;
+	*poly = r3d_init_empty_poly();
 
 	// return if we were given an invalid poly
 	if(minvperf < 3) return;
@@ -542,11 +587,18 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 
 		// simple case with no need for duplicate vertices
 
-		// read in vertex locations
+		// Allocate memory
 		*nverts = numverts;
+		poly->verts = malloc((*nverts)*sizeof(r3d_vertex));
+		if (poly->verts == NULL) {
+			printf("r3d_init_poly ERROR: unable to allocate verts\n");
+			abort();
+		}
+
+		// read in vertex locations
 		for(v = 0; v < *nverts; ++v) {
-			vertbuffer[v].pos = vertices[v];
-			for(np = 0; np < 3; ++np) vertbuffer[v].pnbrs[np] = R3D_MAX_VERTS;
+			poly->verts[v].pos = vertices[v];
+			for(np = 0; np < 3; ++np) poly->verts[v].pnbrs[np] = max_verts;
 		}
 	
 		// build graph connectivity by correctly orienting half-edges for each vertex 
@@ -556,18 +608,18 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 				vcur = faceinds[f][(v+1)%numvertsperface[f]];
 				vnext = faceinds[f][(v+2)%numvertsperface[f]];
 				for(np = 0; np < 3; ++np) {
-					if(vertbuffer[vcur].pnbrs[np] == vprev) {
-						vertbuffer[vcur].pnbrs[(np+2)%3] = vnext;
+					if(poly->verts[vcur].pnbrs[np] == vprev) {
+						poly->verts[vcur].pnbrs[(np+2)%3] = vnext;
 						break;
 					}
-					else if(vertbuffer[vcur].pnbrs[np] == vnext) {
-						vertbuffer[vcur].pnbrs[(np+1)%3] = vprev;
+					else if(poly->verts[vcur].pnbrs[np] == vnext) {
+						poly->verts[vcur].pnbrs[(np+1)%3] = vprev;
 						break;
 					}
 				}
 				if(np == 3) {
-					vertbuffer[vcur].pnbrs[1] = vprev;
-					vertbuffer[vcur].pnbrs[0] = vnext;
+					poly->verts[vcur].pnbrs[1] = vprev;
+					poly->verts[vcur].pnbrs[0] = vnext;
 				}
 			}
 		}
@@ -584,9 +636,9 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 		r3d_int v0, v1, v00, v11, numunclipped;
 
 		// we need a few extra buffers to handle the necessary operations
-		r3d_vertex vbtmp[3*R3D_MAX_VERTS];
-		r3d_int util[3*R3D_MAX_VERTS];
-		r3d_int vstart[R3D_MAX_VERTS];
+		r3d_vertex vbtmp[max_verts];
+		r3d_int util[max_verts];
+		r3d_int vstart[max_verts];
 
 		// build vertex mappings to degenerate duplicates
 		// and read in vertex locations
@@ -595,7 +647,7 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 			vstart[v] = *nverts;
 			for(vcur = 0; vcur < eperv[v]; ++vcur) {
 				vbtmp[*nverts].pos = vertices[v];
-				for(np = 0; np < 3; ++np) vbtmp[*nverts].pnbrs[np] = R3D_MAX_VERTS;
+				for(np = 0; np < 3; ++np) vbtmp[*nverts].pnbrs[np] = max_verts;
 				++(*nverts);
 			}	
 		}
@@ -661,19 +713,51 @@ void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts,
 			util[v1] = 1;
 		}
 
+		// Count how many vertices we need.
+		numunclipped = 0;
+		for(v = 0; v < *nverts; ++v) {
+			if(!util[v]) numunclipped++;
+		}
+
+		// Allocate memory
+		poly->verts = malloc((numunclipped)*sizeof(r3d_vertex));
+		if (poly->verts == NULL) {
+			printf("r3d_init_poly ERROR: unable to allocate verts\n");
+			abort();
+		}
+
 		// copy to the real vertbuffer and compress
 		numunclipped = 0;
 		for(v = 0; v < *nverts; ++v) {
 			if(!util[v]) {
-				vertbuffer[numunclipped] = vbtmp[v];
+				poly->verts[numunclipped] = vbtmp[v];
 				util[v] = numunclipped++;
 			}
 		}
 		*nverts = numunclipped;
 		for(v = 0; v < *nverts; ++v) 
 			for(np = 0; np < 3; ++np)
-				vertbuffer[v].pnbrs[np] = util[vertbuffer[v].pnbrs[np]];
+				poly->verts[v].pnbrs[np] = util[poly->verts[v].pnbrs[np]];
 	}
+}
+
+void r3d_free_poly(r3d_poly* poly) {
+	if (poly->verts != NULL) {
+		free(poly->verts);
+	}
+}
+
+void r3d_copy_poly(r3d_poly* topoly, r3d_poly* frompoly) {
+	topoly->nverts = frompoly->nverts;
+	if (topoly->verts != NULL) {
+		free(topoly->verts);
+	}
+	topoly->verts = malloc((topoly->nverts)*sizeof(r3d_vertex));
+	if (topoly->verts == NULL) {
+		printf("r3d_copy_poly ERROR: unable to allocate target vertex buffer.\n");
+                abort();
+	}
+	memcpy(topoly->verts, frompoly->verts, (topoly->nverts)*sizeof(r3d_vertex));
 }
 
 void r3d_tet_faces_from_verts(r3d_plane* faces, r3d_rvec3* verts) {

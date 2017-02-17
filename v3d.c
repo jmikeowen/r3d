@@ -42,6 +42,10 @@
  *
  */
 
+
+// This is here purely to compile while we transition to dynamically sized vertex lists.  Totally wrong!
+#define R3D_MAX_VERTS 512
+
 #include "v3d.h"
 #include <string.h>
 #include <math.h>

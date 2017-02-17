@@ -92,8 +92,7 @@ typedef struct {
  * \brief A polyhedron. Can be convex, nonconvex, even multiply-connected.
  */
 typedef struct {
-#define R3D_MAX_VERTS 128
-	r3d_vertex verts[R3D_MAX_VERTS]; /*!< Vertex buffer. */
+	r3d_vertex* verts; /*!< Vertex buffer. */
 	r3d_int nverts; /*!< Number of vertices in the buffer. */
 } r3d_poly;
 
@@ -255,6 +254,15 @@ void r3d_affine(r3d_poly* poly, r3d_real mat[4][4]);
 void r3d_init_tet(r3d_poly* poly, r3d_rvec3* verts);
 
 /**
+ * \brief Initialize an empty polyhedron.
+ *
+ * \return poly
+ * The empty polyhedron.
+ *
+ */
+r3d_poly r3d_init_empty_poly();
+
+/**
  * \brief Initialize a polyhedron as an axis-aligned cube. 
  *
  * \param [out] poly
@@ -293,6 +301,23 @@ void r3d_init_box(r3d_poly* poly, r3d_rvec3* rbounds);
  */
 void r3d_init_poly(r3d_poly* poly, r3d_rvec3* vertices, r3d_int numverts, 
 						r3d_int** faceinds, r3d_int* numvertsperface, r3d_int numfaces);
+
+/**
+ * \brief Clean and deallocate any memory used by an r3d_poly.
+ */
+void r3d_free_poly(r3d_poly* poly);
+
+/**
+ * \brief Copy an r3d_poly to a new instance.  Does a deep copy of the vertex buffer.
+ *
+ * \param[out] topoly
+ * The polyhedron to be copied TO.
+ *
+ * \param[in] frompoly
+ * The polyhedron we're copying FROM.
+ *
+ */
+void r3d_copy_poly(r3d_poly* topoly, r3d_poly* frompoly);
 
 /**
  * \brief Get four faces (unit normals and distances to the origin)

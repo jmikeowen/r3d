@@ -106,9 +106,7 @@ void test_recursive_splitting_nondegenerate() {
 	r2d_int nstack, depth, t, m;
 	r2d_poly polystack[STACK_SIZE];
 	r2d_int depthstack[STACK_SIZE];
-	for (t = 0; t < STACK_SIZE; ++t) {
-		polystack[t] = r2d_init_empty_poly();
-	}
+	for (t = 0; t < STACK_SIZE; ++t) polystack[t] = r2d_init_empty_poly();
 
 	// variables: the polyhedra and their moments
 	r2d_rvec2 verts[3];
@@ -197,9 +195,7 @@ void test_recursive_splitting_nondegenerate() {
 	r2d_free_poly(&opoly);
 	r2d_free_poly(&poly1);
 	r2d_free_poly(&poly2);
-	for (t = 0; t < STACK_SIZE; ++t) {
-		r2d_free_poly(&polystack[t]);
-	}
+	for (t = 0; t < STACK_SIZE; ++t) r2d_free_poly(&polystack[t]);
 }
 
 void test_recursive_splitting_degenerate() {
@@ -212,9 +208,7 @@ void test_recursive_splitting_degenerate() {
 	r2d_int nstack, depth, t, chopt, m;
 	r2d_poly polystack[STACK_SIZE];
 	r2d_int depthstack[STACK_SIZE];
-	for (t = 0; t < STACK_SIZE; ++t) {
-		polystack[t] = r2d_init_empty_poly();
-	}
+	for (t = 0; t < STACK_SIZE; ++t) polystack[t] = r2d_init_empty_poly();
 
 	// variables: the polyhedra and their moments
 	r2d_rvec2 verts[3];
@@ -307,9 +301,7 @@ void test_recursive_splitting_degenerate() {
 	r2d_free_poly(&opoly);
 	r2d_free_poly(&poly1);
 	r2d_free_poly(&poly2);
-	for (t = 0; t < STACK_SIZE; ++t) {
-		r2d_free_poly(&polystack[t]);
-	}
+	for (t = 0; t < STACK_SIZE; ++t) r2d_free_poly(&polystack[t]);
 }
 
 void test_recursive_splitting_degenerate_perturbed() {
@@ -326,9 +318,7 @@ void test_recursive_splitting_degenerate_perturbed() {
 	r2d_int nstack, depth, t, chopt, m;
 	r2d_poly polystack[STACK_SIZE];
 	r2d_int depthstack[STACK_SIZE];
-	for (t = 0; t < STACK_SIZE; ++t) {
-		polystack[t] = r2d_init_empty_poly();
-	}
+	for (t = 0; t < STACK_SIZE; ++t) polystack[t] = r2d_init_empty_poly();
 
 	// variables: the polyhedra and their moments
 	r2d_rvec2 verts[3];
@@ -432,9 +422,7 @@ void test_recursive_splitting_degenerate_perturbed() {
 	r2d_free_poly(&opoly);
 	r2d_free_poly(&poly1);
 	r2d_free_poly(&poly2);
-	for (t = 0; t < STACK_SIZE; ++t) {
-		r2d_free_poly(&polystack[t]);
-	}
+	for (t = 0; t < STACK_SIZE; ++t) r2d_free_poly(&polystack[t]);
 }
 
 
@@ -490,9 +478,7 @@ void test_random_verts() {
 	r2d_int nstack, depth, chopt;
 	r2d_poly polystack[STACK_SIZE];
 	r2d_int depthstack[STACK_SIZE];
-	for (m = 0; m < STACK_SIZE; ++m) {
-		polystack[m] = r2d_init_empty_poly();
-	}
+	for (m = 0; m < STACK_SIZE; ++m) polystack[m] = r2d_init_empty_poly();
 
 	// variables: the polyhedra and their moments
 	r2d_plane splane;
@@ -586,9 +572,7 @@ void test_random_verts() {
 	r2d_free_poly(&opoly);
 	r2d_free_poly(&poly1);
 	r2d_free_poly(&poly2);
-	for (m = 0; m < STACK_SIZE; ++m) {
-		r2d_free_poly(&polystack[m]);
-	}
+	for (m = 0; m < STACK_SIZE; ++m) r2d_free_poly(&polystack[m]);
 }
 
 void test_rasterization() {
