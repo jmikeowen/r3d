@@ -90,8 +90,7 @@ typedef struct {
  * \brief A polygon. Can be convex, nonconvex, even multiply-connected.
  */
 typedef struct {
-#define R2D_MAX_VERTS 64 
-	r2d_vertex verts[R2D_MAX_VERTS]; /*!< Vertex buffer. */
+	r2d_vertex* verts; /*!< Vertex buffer. */
 	r2d_int nverts; /*!< Number of vertices in the buffer. */
 } r2d_poly;
 
@@ -234,6 +233,15 @@ void r2d_shear(r2d_poly* poly, r2d_real shear, r2d_int axb, r2d_int axs);
 void r2d_affine(r2d_poly* poly, r2d_real mat[3][3]);
 
 /**
+ * \brief Initialize an empty polygon.
+ *
+ * \return poly
+ * The empty polygon.
+ *
+ */
+r2d_poly r2d_init_empty_poly();
+
+/**
  * \brief Initialize a polygon as an axis-aligned box. 
  *
  * \param [out] poly
@@ -260,6 +268,23 @@ void r2d_init_box(r2d_poly* poly, r2d_rvec2* rbounds);
  *
  */
 void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts);
+
+/**
+ * \brief Clean and deallocate any memory used by an r2d_poly.
+ */
+void r2d_destroy_poly(r2d_poly* poly);
+
+/**
+ * \brief Copy an r2d_poly to a new instance.  Does a deep copy of the vertex buffer.
+ *
+ * \param[out] topoly
+ * The polygon to be copied TO.
+ *
+ * \param[in] frompoly
+ * The polygon we're copying FROM.
+ *
+ */
+void r2d_copy_poly(r2d_poly* topoly, r2d_poly* frompoly);
 
 /**
  * \brief Get four faces (unit normals and distances to the origin)

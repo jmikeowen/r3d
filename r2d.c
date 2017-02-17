@@ -21,6 +21,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // useful macros
 #define ONE_THIRD 0.333333333333333333333333333333333333333333333333333333
@@ -36,23 +37,37 @@
 	v.y /= (tmplen + 1.0e-299);		\
 }
 
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a < _b ? _a : _b; })
+
 
 void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 
 	// variable declarations
 	r2d_int v, p, np, onv, vstart, vcur, vnext, numunclipped; 
 
-	// direct access to vertex buffer
-	r2d_vertex* vertbuffer = poly->verts; 
+        // Number of starting verts.
 	r2d_int* nverts = &poly->nverts; 
 	if(*nverts <= 0) return;
 
 	// signed distances to the clipping plane
-	r2d_real sdists[R2D_MAX_VERTS];
+	r2d_real* sdists = (r2d_real*) malloc((*nverts)*sizeof(r2d_real));
 	r2d_real smin, smax;
 
 	// for marking clipped vertices
-	r2d_int clipped[R2D_MAX_VERTS];
+	r2d_int* clipped = (r2d_int*) malloc((*nverts)*sizeof(r2d_int));
+
+        // Be prepared for reallocating with new pointers.
+	r2d_vertex* verts_new;
+        r2d_real* sdists_new;
+        r2d_int* clipped_new;
 
 	// loop over each clip plane
 	for(p = 0; p < nplanes; ++p) {
@@ -61,9 +76,9 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 		onv = *nverts;
 		smin = 1.0e30;
 		smax = -1.0e30;
-		memset(&clipped, 0, sizeof(clipped));
+		memset(clipped, 0, onv*sizeof(r2d_int));
 		for(v = 0; v < onv; ++v) {
-			sdists[v] = planes[p].d + dot(vertbuffer[v].pos, planes[p].n);
+			sdists[v] = planes[p].d + dot(poly->verts[v].pos, planes[p].n);
 			if(sdists[v] < smin) smin = sdists[v];
 			if(sdists[v] > smax) smax = sdists[v];
 			if(sdists[v] < 0.0) clipped[v] = 1;
@@ -73,6 +88,8 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 		if(smin >= 0.0) continue;
 		if(smax <= 0.0) {
 			*nverts = 0;
+                        free(sdists);
+                        free(clipped);
 			return;
 		}
 
@@ -80,14 +97,25 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 		for(vcur = 0; vcur < onv; ++vcur) {
 			if(clipped[vcur]) continue;
 			for(np = 0; np < 2; ++np) {
-				vnext = vertbuffer[vcur].pnbrs[np];
+				vnext = poly->verts[vcur].pnbrs[np];
 				if(!clipped[vnext]) continue;
-				vertbuffer[*nverts].pnbrs[1-np] = vcur;
-				vertbuffer[*nverts].pnbrs[np] = -1;
-				vertbuffer[vcur].pnbrs[np] = *nverts;
-				wav(vertbuffer[vcur].pos, -sdists[vnext],
-					vertbuffer[vnext].pos, sdists[vcur],
-					vertbuffer[*nverts].pos);
+                                verts_new = realloc(poly->verts, (*nverts + 1)*sizeof(r2d_vertex));
+                                sdists_new = realloc(sdists, (*nverts + 1)*sizeof(r2d_real));
+                                clipped_new = realloc(clipped, (*nverts + 1)*sizeof(r2d_int));
+                                if (verts_new == NULL || sdists_new == NULL || clipped_new == NULL) {
+                                  printf("r2d_clip ERROR: unable to increase vertex buffer size.");
+                                  return;
+                                }
+                                poly->verts = verts_new;
+                                sdists = sdists_new;
+                                clipped = clipped_new;
+				poly->verts[*nverts].pnbrs[1-np] = vcur;
+				poly->verts[*nverts].pnbrs[np] = -1;
+				poly->verts[vcur].pnbrs[np] = *nverts;
+                                clipped[*nverts] = 0;
+				wav(poly->verts[vcur].pos, -sdists[vnext],
+					poly->verts[vnext].pos, sdists[vcur],
+					poly->verts[*nverts].pos);
 				(*nverts)++;
 			}
 		}
@@ -95,13 +123,13 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 		// for each new vert, search around the poly for its new neighbors
 		// and doubly-link everything
 		for(vstart = onv; vstart < *nverts; ++vstart) {
-			if(vertbuffer[vstart].pnbrs[1] >= 0) continue;
-			vcur = vertbuffer[vstart].pnbrs[0];
+			if(poly->verts[vstart].pnbrs[1] >= 0) continue;
+			vcur = poly->verts[vstart].pnbrs[0];
 			do {
-				vcur = vertbuffer[vcur].pnbrs[0]; 
+				vcur = poly->verts[vcur].pnbrs[0]; 
 			} while(vcur < onv);
-			vertbuffer[vstart].pnbrs[1] = vcur;
-			vertbuffer[vcur].pnbrs[0] = vstart;
+			poly->verts[vstart].pnbrs[1] = vcur;
+			poly->verts[vcur].pnbrs[0] = vstart;
 		}
 
 		// go through and compress the vertex list, removing clipped verts
@@ -109,16 +137,20 @@ void r2d_clip(r2d_poly* poly, r2d_plane* planes, r2d_int nplanes) {
 		numunclipped = 0;
 		for(v = 0; v < *nverts; ++v) {
 			if(!clipped[v]) {
-				vertbuffer[numunclipped] = vertbuffer[v];
+				poly->verts[numunclipped] = poly->verts[v];
 				clipped[v] = numunclipped++;
 			}
 		}
 		*nverts = numunclipped;
 		for(v = 0; v < *nverts; ++v) {
-			vertbuffer[v].pnbrs[0] = clipped[vertbuffer[v].pnbrs[0]];
-			vertbuffer[v].pnbrs[1] = clipped[vertbuffer[v].pnbrs[1]];
+			poly->verts[v].pnbrs[0] = clipped[poly->verts[v].pnbrs[0]];
+			poly->verts[v].pnbrs[1] = clipped[poly->verts[v].pnbrs[1]];
 		}	
 	}
+
+        // Clean up.
+        free(sdists);
+        free(clipped);
 }
 
 void r2d_reduce(r2d_poly* poly, r2d_real* moments, r2d_int polyorder) {
@@ -202,11 +234,11 @@ void r2d_reduce(r2d_poly* poly, r2d_real* moments, r2d_int polyorder) {
 r2d_int r2d_is_good(r2d_poly* poly) {
 
 	r2d_int v;
-	r2d_int vct[R2D_MAX_VERTS];
+	r2d_int* nverts = &poly->nverts; 
+	r2d_int vct[*nverts];
 
 	// direct access to vertex buffer
 	r2d_vertex* vertbuffer = poly->verts; 
-	r2d_int* nverts = &poly->nverts; 
 
 	// consistency check
 	memset(&vct, 0, sizeof(vct));
@@ -283,13 +315,26 @@ void r2d_affine(r2d_poly* poly, r2d_real mat[3][3]) {
 }
 
 
+r2d_poly r2d_init_empty_poly() {
+	r2d_poly result = {NULL, 0};
+	return result;
+}
+
+
 void r2d_init_box(r2d_poly* poly, r2d_rvec2 rbounds[2]) {
+
+	// Allocate memory
+	r2d_int* nverts = &poly->nverts; 
+	*nverts = 4;
+	poly->verts = malloc((*nverts)*sizeof(r2d_vertex));
+	if (poly->verts == NULL) {
+		printf("r2d_init_box ERROR: unable to allocate verts>");
+		return;
+	}
 
 	// direct access to vertex buffer
 	r2d_vertex* vertbuffer = poly->verts; 
-	r2d_int* nverts = &poly->nverts; 
 	
-	*nverts = 4;
 	vertbuffer[0].pnbrs[0] = 1;	
 	vertbuffer[0].pnbrs[1] = 3;	
 	vertbuffer[1].pnbrs[0] = 2;	
@@ -312,12 +357,19 @@ void r2d_init_box(r2d_poly* poly, r2d_rvec2 rbounds[2]) {
 
 void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts) {
 
+	// Allocate memory
+	r2d_int* nverts = &poly->nverts; 
+	*nverts = numverts;
+	poly->verts = malloc((*nverts)*sizeof(r2d_vertex));
+	if (poly->verts == NULL) {
+		printf("r2d_init_poly ERROR: unable to allocate verts>");
+		return;
+	}
+
 	// direct access to vertex buffer
 	r2d_vertex* vertbuffer = poly->verts; 
-	r2d_int* nverts = &poly->nverts; 
 
 	// init the poly
-	*nverts = numverts;
 	r2d_int v;
 	for(v = 0; v < *nverts; ++v) {
 		vertbuffer[v].pos = vertices[v];
@@ -326,6 +378,24 @@ void r2d_init_poly(r2d_poly* poly, r2d_rvec2* vertices, r2d_int numverts) {
 	}
 }
 
+
+void r2d_destroy_poly(r2d_poly* poly) {
+	if (poly->verts != NULL) {
+		free(poly->verts);
+	}
+}
+
+void r2d_copy_poly(r2d_poly* topoly, r2d_poly* frompoly) {
+	topoly->nverts = frompoly->nverts;
+	if (topoly->verts != NULL) {
+		free(topoly->verts);
+	}
+	topoly->verts = malloc((topoly->nverts)*sizeof(r2d_vertex));
+	/* if (topoly->verts == NULL) { */
+	/* 	printf("r2d_copy_poly ERROR: unable to allocate target vertex buffer."); */
+	/* } */
+	memcpy(topoly->verts, frompoly->verts, (topoly->nverts)*sizeof(r2d_vertex));
+}
 
 void r2d_box_faces_from_verts(r2d_plane* faces, r2d_rvec2* rbounds) {
 	faces[0].n.x = 0.0; faces[0].n.y = 1.0; faces[0].d = rbounds[0].y; 
